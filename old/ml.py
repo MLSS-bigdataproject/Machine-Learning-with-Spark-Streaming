@@ -1,28 +1,20 @@
 #importing all directories needed
-import os
-import sys, pyspark, json
-from pyspark import SparkContext
-from pyspark.ml import Pipeline
-import pyspark.sql.types as tp
-from pyspark.ml.feature import Tokenizer
-from pyspark.sql import SQLContext, SparkSession
-from pyspark.sql import SparkSession,Row,Column
-from pyspark.ml.feature import StringIndexer, VectorAssembler,OneHotEncoder,VectorSlicer
-from pyspark.ml.feature import StopWordsRemover, Word2Vec, RegexTokenizer
+import json
+from pyspark import SparkConf, SparkContext
 from pyspark.streaming import StreamingContext
 from pyspark.sql.functions import lit
+from pyspark.sql import SQLContext, SparkSession
+import sys
 from shutil import rmtree
+import os
 from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, CountVectorizer
 from pyspark.ml.classification import LogisticRegression,NaiveBayes,RandomForestClassifier
 from pyspark.sql.functions import col
 from pyspark.ml import Pipeline
+from pyspark.ml.feature import OneHotEncoder, StringIndexer, VectorAssembler
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 from pyspark.ml.feature import HashingTF, IDF
-from pyspark.ml.tuning import ParamGridBuilder, CrossValidator, TrainValidationSplit
-from pyspark.sql.functions import *
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
-from pyspark.ml.linalg import Vectors
-
+from pyspark.ml.tuning import ParamGridBuilder, CrossValidator
 
 sc = SparkContext("local[2]", "Crime")
 ssc = StreamingContext(sc, 1)
@@ -39,28 +31,12 @@ test_df.show()
 #diplaying the schema of the training dataset
 train_df.printSchema() 
 
-# one hot encoding and assembling
-encoding_var = [i[0] for i in train_df.dtypes if (i[1]=='string') & (i[0]!='y')]
-num_var = [i[0] for i in train_df.dtypes if ((i[1]=='int') | (i[1]=='double')) & (i[0]!='y')]
-string_indexes = [StringIndexer(inputCol = c, outputCol = 'IDX_' + c, handleInvalid = 'keep') for c in encoding_var]
-onehot_indexes = [OneHotEncoder(inputCols = ['IDX_' + c], outputCols = ['OHE_' + c]) for c in encoding_var]
-label_indexes = StringIndexer(inputCol = 'y', outputCol = 'label', handleInvalid = 'keep')
-assembler = VectorAssembler(inputCols = num_var + ['OHE_' + c for c in encoding_var], outputCol = "features")
-rf = RandomForestClassifier(labelCol="label", featuresCol="features", seed = 8464,numTrees=10, cacheNodeIds = True, subsamplingRate = 0.7)
-pipe = Pipeline(stages = string_indexes + onehot_indexes + [assembler, label_indexes, rf])
-mod = pipe.fit(train_df)
-df2 = mod.transform(train_df)
-mod.stages[-1].featureImportances
-
-
 drop_list = ['Dates', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address', 'X', 'Y']
 train_df = train_df.select([column for column in train_df.columns if column not in drop_list])
 train_df.show(5)
 
 #diplaying the schema of the training dataset
 train_df.printSchema() 
-
-train_df = train_df.sample(0.001)
 
 train_df.groupBy("Category").count().orderBy(col("count").desc()).show()
 train_df.groupBy("Descript").count().orderBy(col("count").desc()).show()
@@ -84,7 +60,6 @@ print("Training Dataset Count: " + str(trainingData.count()))
 print("Test Dataset Count: " + str(testData.count()))
 
 #Logistic Regression
-print("Logistic Regression:")
 lr = LogisticRegression(maxIter=20, regParam=0.3, elasticNetParam=0)
 lrModel = lr.fit(trainingData)
 predictions = lrModel.transform(testData)
@@ -94,9 +69,8 @@ predictions.filter(predictions['prediction'] == 0) \
     .show(n = 10, truncate = 30)
     
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
-LogRegAcc = evaluator.evaluate(predictions)
+evaluator.evaluate(predictions)
 
-'''
 pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])
 pipelineFit = pipeline.fit(train_df)
 dataset = pipelineFit.transform(train_df)
@@ -119,10 +93,9 @@ predictions = cvModel.transform(testData)
 # Evaluate best model
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 evaluator.evaluate(predictions)
-'''
+
 
 #Naive Bayes
-print("Naive Bayes:")
 nb = NaiveBayes(smoothing=1)
 model = nb.fit(trainingData)
 predictions = model.transform(testData)
@@ -132,10 +105,9 @@ predictions.filter(predictions['prediction'] == 0) \
     .show(n = 10, truncate = 30)
 
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
-nativeBayesAcc = evaluator.evaluate(predictions)
+evaluator.evaluate(predictions)
 
 #Random Forest
-print("Random Forest")
 rf = RandomForestClassifier(labelCol="label", \
                             featuresCol="features", \
                             numTrees = 100, \
@@ -150,10 +122,6 @@ predictions.filter(predictions['prediction'] == 0) \
     
 
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
-RandomForestAcc = evaluator.evaluate(predictions)
-
-print("Logistic Regression Accuracy: ",LogRegAcc)
-print("Naive Bayes Accuracy: ", nativeBayesAcc)
-print("Random Forest Accuracy: ",RandomForestAcc)
+evaluator.evaluate(predictions)
 
 
