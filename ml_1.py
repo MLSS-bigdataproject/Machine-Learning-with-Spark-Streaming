@@ -2,28 +2,25 @@
 import os
 import sys, pyspark, json
 from pyspark import SparkContext
+import numpy as np
 from pyspark.ml import Pipeline
 import pyspark.sql.types as tp
+from pyspark.ml.regression import RandomForestRegressor
+from pyspark.ml.evaluation import RegressionEvaluator,MulticlassClassificationEvaluator,BinaryClassificationEvaluator
 from pyspark.ml.feature import Tokenizer
 from pyspark.sql import SQLContext, SparkSession
 from pyspark.sql import SparkSession,Row,Column
-from pyspark.ml.feature import StringIndexer, VectorAssembler,OneHotEncoder,VectorSlicer
-from pyspark.ml.feature import StopWordsRemover, Word2Vec, RegexTokenizer
+from pyspark.ml.feature import StringIndexer, VectorAssembler,OneHotEncoder,VectorSlicer,StopWordsRemover, Word2Vec, RegexTokenizer,StandardScaler,RegexTokenizer, StopWordsRemover, CountVectorizer
 from pyspark.streaming import StreamingContext
 from pyspark.sql.functions import lit
-from shutil import rmtree
-from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, CountVectorizer
+from sklearn.preprocessing import MinMaxScaler
 from pyspark.ml.classification import LogisticRegression,NaiveBayes,RandomForestClassifier
 from pyspark.sql.functions import col
-from pyspark.ml import Pipeline
-from pyspark.ml.evaluation import MulticlassClassificationEvaluator
 from pyspark.ml.feature import HashingTF, IDF
 from pyspark.ml.tuning import ParamGridBuilder, CrossValidator, TrainValidationSplit
 from pyspark.sql.functions import *
-from pyspark.ml.evaluation import BinaryClassificationEvaluator
 from pyspark.ml.linalg import Vectors
-from sklearn.feature_selection import SelectKBest
-from sklearn.feature_selection import chi2
+from sklearn.feature_selection import SelectKBest,chi2
 from pyspark.sql.types import FloatType
 from pyspark.mllib.evaluation import MulticlassMetrics
 import pyspark.sql.functions as F
@@ -46,8 +43,38 @@ train_df = train_df.withColumn('Y', train_df['Y'].cast(FloatType()))
 #diplaying the schema of the training dataset
 train_df.printSchema() 
 
+'''
+#done for float columns
+features = ['X', 'Y']
+x = train_df.select([column for column in train_df.columns if column in features]).collect()
+scaler = MinMaxScaler()
+scaler.fit(x)
+x = scaler.transform(x)
+y = train_df.select(["Category"]).collect()
+label_stringIdx = StringIndexer(inputCol = "Category", outputCol = "label")
+indexed = label_stringIdx.fit(train_df).transform(train_df)
+test = SelectKBest(score_func=chi2, k=2)
+fit = test.fit(x, y)
+print(fit.scores_)
+#x and y columns are somewhat usefull with x giving 45% usability and y giving less than 10%
 
-drop_list = ['Dates', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address', 'X', 'Y']
+features = ['Dates', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address','Category']
+x = train_df.select([column for column in train_df.columns if column in features]).collect()
+y = train_df.select(["Category"]).collect()
+indexers = [StringIndexer(inputCol=column, outputCol=column+"_index").fit(train_df) for column in features]
+pipeline = Pipeline(stages=indexers)
+df_r = pipeline.fit(train_df).transform(train_df)
+d_list = ['Dates', 'Descript','Category','Category_index','DayOfWeek', 'PdDistrict', 'Resolution', 'Address','X','Y','Dates_index']
+x = df_r.select([column for column in df_r.columns if column not in d_list]).collect()
+y = df_r.select(["Category_index"]).collect()
+print(x[:][1])
+#print(y)
+test = SelectKBest(score_func=chi2, k=4)
+fit = test.fit(x, y)
+print(fit.scores_)
+#even though the values are high these columns will be dropped because during streaming and upon using these features,accuracy becomes bad
+'''
+drop_list = ['Dates', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address', 'Descript' ,'X', 'Y']
 train_df = train_df.select([column for column in train_df.columns if column not in drop_list])
 train_df.show(5)
 
@@ -95,8 +122,6 @@ truepos = predictions.select('prediction').where(predictions["label"]=='1' & pre
 #falsepos = []
 #falseneg = []
 
-
-
 '''
 pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])
 pipelineFit = pipeline.fit(train_df)
@@ -121,7 +146,6 @@ predictions = cvModel.transform(testData)
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 evaluator.evaluate(predictions)
 '''
-
 #Naive Bayes
 print("Naive Bayes:")
 nb = NaiveBayes(smoothing=1)
@@ -158,6 +182,3 @@ print("Naive Bayes Accuracy: ", nativeBayesAcc)
 print("Random Forest Accuracy: ",RandomForestAcc)
 
 #cross-validation tests
-
-
-
