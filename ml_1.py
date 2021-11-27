@@ -74,7 +74,8 @@ fit = test.fit(x, y)
 print(fit.scores_)
 #even though the values are high these columns will be dropped because during streaming and upon using these features,accuracy becomes bad
 '''
-drop_list = ['Dates', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address', 'Descript' ,'X', 'Y']
+
+drop_list = ['Dates', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address','X', 'Y']
 train_df = train_df.select([column for column in train_df.columns if column not in drop_list])
 train_df.show(5)
 
@@ -105,6 +106,7 @@ print("Training Dataset Count: " + str(trainingData.count()))
 print("Test Dataset Count: " + str(testData.count()))
 
 #Logistic Regression
+print("\n")
 print("Logistic Regression:")
 lr = LogisticRegression(maxIter=20, regParam=0.3, elasticNetParam=0)
 lrModel = lr.fit(trainingData)
@@ -117,36 +119,59 @@ predictions.filter(predictions['prediction'] == 0) \
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 LogRegAcc = evaluator.evaluate(predictions)
 
-truepos = predictions.select('prediction').where(predictions["label"]=='1' & predictions["prediction"]=='1').count().show()
-#trueneg = []
-#falsepos = []
-#falseneg = []
 
+tp_lr = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
+tn_lr = predictions[(predictions.label == 0) & (predictions.prediction == 0)].count()
+fp_lr = predictions[(predictions.label == 0) & (predictions.prediction == 1)].count()
+fn_lr = predictions[(predictions.label == 1) & (predictions.prediction == 0)].count()
+r_lr = float(tp_lr)/(tp_lr + fn_lr)
+p_lr = float(tp_lr) / (tp_lr + fn_lr)
+fone_lr = float(tp_lr) / (float(tp_lr) + 0.5*(fp_lr+fn_lr))
+
+#Implemented lr with tf-idf and also applied hyperparameter tuning
 '''
+print("logistic regression with tf-idf:")
+hashingTF = HashingTF(inputCol="filtered", outputCol="rawFeatures", numFeatures=10000)
+idf = IDF(inputCol="rawFeatures", outputCol="features", minDocFreq=5) 
+pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, hashingTF, idf, label_stringIdx])
+pipelineFit = pipeline.fit(train_df)
+dataset = pipelineFit.transform(train_df)
+(trainingData, testData) = dataset.randomSplit([0.7, 0.3], seed = 100)
+lr = LogisticRegression(maxIter=20, regParam=0.3, elasticNetParam=0)
+lrModel = lr.fit(trainingData)
+predictions = lrModel.transform(testData)
+predictions.filter(predictions['prediction'] == 0) \
+    .select("Descript","Category","probability","label","prediction") \
+    .orderBy("probability", ascending=False) \
+    .show(n = 10, truncate = 30)
+
+evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
+logregidfacc = evaluator.evaluate(predictions)
+
 pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])
 pipelineFit = pipeline.fit(train_df)
 dataset = pipelineFit.transform(train_df)
 (trainingData, testData) = dataset.randomSplit([0.7, 0.3], seed = 100)
 lr = LogisticRegression(maxIter=20, regParam=0.3, elasticNetParam=0)
+
 paramGrid = (ParamGridBuilder()
              .addGrid(lr.regParam, [0.1, 0.3, 0.5]) # regularization parameter
              .addGrid(lr.elasticNetParam, [0.0, 0.1, 0.2]) # Elastic Net Parameter (Ridge = 0)
 #            .addGrid(model.maxIter, [10, 20, 50]) #Number of iterations
 #            .addGrid(idf.numFeatures, [10, 100, 1000]) # Number of features
              .build())
-# Create 5-fold CrossValidator
 cv = CrossValidator(estimator=lr, \
                     estimatorParamMaps=paramGrid, \
                     evaluator=evaluator, \
                     numFolds=5)
 cvModel = cv.fit(trainingData)
-
 predictions = cvModel.transform(testData)
-# Evaluate best model
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
-evaluator.evaluate(predictions)
+hyperlogregidfacc = evaluator.evaluate(predictions)
 '''
+
 #Naive Bayes
+print("\n")
 print("Naive Bayes:")
 nb = NaiveBayes(smoothing=1)
 model = nb.fit(trainingData)
@@ -158,6 +183,15 @@ predictions.filter(predictions['prediction'] == 0) \
 
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 nativeBayesAcc = evaluator.evaluate(predictions)
+
+tp_nb = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
+tn_nb = predictions[(predictions.label == 0) & (predictions.prediction == 0)].count()
+fp_nb = predictions[(predictions.label == 0) & (predictions.prediction == 1)].count()
+fn_nb = predictions[(predictions.label == 1) & (predictions.prediction == 0)].count()
+r_nb = float(tp_nb)/(tp_nb + fn_nb)
+p_nb = float(tp_nb) / (tp_nb + fp_nb)
+fone_nb = float(tp_nb) / (float(tp_nb) + 0.5*(fp_nb+fn_nb))
+
 
 #Random Forest
 print("Random Forest")
@@ -173,12 +207,68 @@ predictions.filter(predictions['prediction'] == 0) \
     .orderBy("probability", ascending=False) \
     .show(n = 10, truncate = 30)
     
+#applied hyperparameter tuning on model
+'''
+pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])
+pipelineFit = pipeline.fit(train_df)
+dataset = pipelineFit.transform(train_df)
+(trainingData, testData) = dataset.randomSplit([0.7, 0.3], seed = 100)
+rbf = RandomForestClassifier(labelCol="label", \
+                            featuresCol="features", \
+                            numTrees = 100, \
+                            maxDepth = 4, \
+                            maxBins = 32)
+
+paramGrid = (ParamGridBuilder()
+             .addGrid(rbf.numTrees, [10,100,1000]) # regularization parameter
+             .addGrid(rbf.maxDepth, [1 ,4, 10]) # Elastic Net Parameter (Ridge = 0)
+#            .addGrid(model.maxIter, [10, 20, 50]) #Number of iterations
+#            .addGrid(idf.numFeatures, [10, 100, 1000]) # Number of features
+             .build())
+cv = CrossValidator(estimator=rbf, \
+                    estimatorParamMaps=paramGrid, \
+                    evaluator=evaluator, \
+                    numFolds=5)
+cvModel = cv.fit(trainingData)
+predictions = cvModel.transform(testData)
+evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
+hyperlograndfor = evaluator.evaluate(predictions)
+'''   
+tp_rf = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
+tn_rf = predictions[(predictions.label == 0) & (predictions.prediction == 0)].count()
+fp_rf = predictions[(predictions.label == 0) & (predictions.prediction == 1)].count()
+fn_rf = predictions[(predictions.label == 1) & (predictions.prediction == 0)].count()
+r_rf = float(tp_rf)/(tp_rf + fn_rf)
+p_rf = float(tp_rf) / (tp_rf + fp_rf)
+fone_rf = float(tp_rf) / (float(tp_rf) + 0.5*(fp_rf+fn_rf))
 
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 RandomForestAcc = evaluator.evaluate(predictions)
 
+print("Logistic Regression Metrics:")
 print("Logistic Regression Accuracy: ",LogRegAcc)
-print("Naive Bayes Accuracy: ", nativeBayesAcc)
-print("Random Forest Accuracy: ",RandomForestAcc)
+print("recall = ", r_lr)
+print("precision = ", p_lr)
+print("F1-score = ",fone_lr)
 
-#cross-validation tests
+print("Naive Bayes Metrics:")
+print("Naive Bayes Accuracy: ", nativeBayesAcc)
+print("recall = ", r_nb)
+print("precision = ", p_nb)
+print("F1-score = ",fone_nb)
+
+print("Random Forest Metrics: ")
+print("Random Forest Accuracy: ",RandomForestAcc)
+print("recall = ", r_rf)
+print("precision = ", p_rf)
+print("F1-score = ",fone_rf)
+
+
+#print("Logistic Regression with IDF Accuracy: ",logregidfacc)
+#print("Hyperparametered Logistic Regression Accuracy: ",hyperlogregidfacc)
+#print("Hyperparametered Random Forest Accuracy: ",RandomForestAcc)
+
+
+
+
+
