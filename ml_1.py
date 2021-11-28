@@ -25,23 +25,31 @@ from pyspark.sql.types import FloatType
 from pyspark.mllib.evaluation import MulticlassMetrics
 import pyspark.sql.functions as F
 
+
+
 sc = SparkContext("local[2]", "Crime")
 ssc = StreamingContext(sc, 1)
 sql_context=SQLContext(sc)
+
+
 
 #reading the training and testing dataset
 train_df = sql_context.read.option("header",True).csv("train.csv")
 test_df = sql_context.read.option("header",True).csv("test.csv")
 
+
 #displaying the dataset
 train_df.show()
 test_df.show()
 
+
 train_df = train_df.withColumn('X', train_df['X'].cast(FloatType()))
 train_df = train_df.withColumn('Y', train_df['Y'].cast(FloatType()))
 
+
 #diplaying the schema of the training dataset
 train_df.printSchema() 
+
 
 '''
 #done for float columns
@@ -75,17 +83,21 @@ print(fit.scores_)
 #even though the values are high these columns will be dropped because during streaming and upon using these features,accuracy becomes bad
 '''
 
+
 drop_list = ['Dates', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address','X', 'Y']
 train_df = train_df.select([column for column in train_df.columns if column not in drop_list])
 train_df.show(5)
+
 
 #diplaying the schema of the training dataset
 train_df.printSchema() 
 
 train_df = train_df.sample(0.001)
 
+
 train_df.groupBy("Category").count().orderBy(col("count").desc()).show()
 train_df.groupBy("Descript").count().orderBy(col("count").desc()).show()
+
 
 # regular expression tokenizer
 regexTokenizer = RegexTokenizer(inputCol="Descript", outputCol="words", pattern="\\W")
@@ -101,9 +113,12 @@ pipelineFit = pipeline.fit(train_df)
 dataset = pipelineFit.transform(train_df)
 dataset.show(5)
 
+
 (trainingData, testData) = dataset.randomSplit([0.7, 0.3], seed = 100)
 print("Training Dataset Count: " + str(trainingData.count()))
 print("Test Dataset Count: " + str(testData.count()))
+
+
 
 #Logistic Regression
 print("\n")
@@ -120,6 +135,7 @@ evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 LogRegAcc = evaluator.evaluate(predictions)
 
 
+#Implemented calculations for Precision,Recall and F1-Score for Logistic Regression
 tp_lr = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
 tn_lr = predictions[(predictions.label == 0) & (predictions.prediction == 0)].count()
 fp_lr = predictions[(predictions.label == 0) & (predictions.prediction == 1)].count()
@@ -127,6 +143,8 @@ fn_lr = predictions[(predictions.label == 1) & (predictions.prediction == 0)].co
 r_lr = float(tp_lr)/(tp_lr + fn_lr)
 p_lr = float(tp_lr) / (tp_lr + fn_lr)
 fone_lr = float(tp_lr) / (float(tp_lr) + 0.5*(fp_lr+fn_lr))
+
+
 
 #Implemented lr with tf-idf and also applied hyperparameter tuning
 '''
@@ -170,6 +188,7 @@ evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 hyperlogregidfacc = evaluator.evaluate(predictions)
 '''
 
+
 #Naive Bayes
 print("\n")
 print("Naive Bayes:")
@@ -184,6 +203,7 @@ predictions.filter(predictions['prediction'] == 0) \
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 nativeBayesAcc = evaluator.evaluate(predictions)
 
+#Implemented calculations for Precision,Recall and F1-Score for Naive Bayes
 tp_nb = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
 tn_nb = predictions[(predictions.label == 0) & (predictions.prediction == 0)].count()
 fp_nb = predictions[(predictions.label == 0) & (predictions.prediction == 1)].count()
@@ -191,6 +211,7 @@ fn_nb = predictions[(predictions.label == 1) & (predictions.prediction == 0)].co
 r_nb = float(tp_nb)/(tp_nb + fn_nb)
 p_nb = float(tp_nb) / (tp_nb + fp_nb)
 fone_nb = float(tp_nb) / (float(tp_nb) + 0.5*(fp_nb+fn_nb))
+
 
 
 #Random Forest
@@ -206,6 +227,22 @@ predictions.filter(predictions['prediction'] == 0) \
     .select("Descript","Category","probability","label","prediction") \
     .orderBy("probability", ascending=False) \
     .show(n = 10, truncate = 30)
+
+evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
+#Accuracy
+RandomForestAcc = evaluator.evaluate(predictions)
+
+
+#Implemented calculations for Precision,Recall and F1-Score for Random Forest
+tp_rf = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
+tn_rf = predictions[(predictions.label == 0) & (predictions.prediction == 0)].count()
+fp_rf = predictions[(predictions.label == 0) & (predictions.prediction == 1)].count()
+fn_rf = predictions[(predictions.label == 1) & (predictions.prediction == 0)].count()
+r_rf = float(tp_rf)/(tp_rf + fn_rf)
+p_rf = float(tp_rf) / (tp_rf + fp_rf)
+fone_rf = float(tp_rf) / (float(tp_rf) + 0.5*(fp_rf+fn_rf))
+
+
     
 #applied hyperparameter tuning on model
 '''
@@ -234,22 +271,15 @@ predictions = cvModel.transform(testData)
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 hyperlograndfor = evaluator.evaluate(predictions)
 '''   
-tp_rf = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
-tn_rf = predictions[(predictions.label == 0) & (predictions.prediction == 0)].count()
-fp_rf = predictions[(predictions.label == 0) & (predictions.prediction == 1)].count()
-fn_rf = predictions[(predictions.label == 1) & (predictions.prediction == 0)].count()
-r_rf = float(tp_rf)/(tp_rf + fn_rf)
-p_rf = float(tp_rf) / (tp_rf + fp_rf)
-fone_rf = float(tp_rf) / (float(tp_rf) + 0.5*(fp_rf+fn_rf))
 
-evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
-RandomForestAcc = evaluator.evaluate(predictions)
 
+#Metrics of all Machine Learning Models
 print("Logistic Regression Metrics:")
 print("Logistic Regression Accuracy: ",LogRegAcc)
 print("recall = ", r_lr)
 print("precision = ", p_lr)
 print("F1-score = ",fone_lr)
+
 
 print("Naive Bayes Metrics:")
 print("Naive Bayes Accuracy: ", nativeBayesAcc)
@@ -257,11 +287,13 @@ print("recall = ", r_nb)
 print("precision = ", p_nb)
 print("F1-score = ",fone_nb)
 
+
 print("Random Forest Metrics: ")
 print("Random Forest Accuracy: ",RandomForestAcc)
 print("recall = ", r_rf)
 print("precision = ", p_rf)
 print("F1-score = ",fone_rf)
+
 
 
 #print("Logistic Regression with IDF Accuracy: ",logregidfacc)
