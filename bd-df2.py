@@ -28,13 +28,13 @@ sc = SparkContext("local[2]", "Crime")
 ssc = StreamingContext(sc, 1)
 sql_context=SQLContext(sc)
 
-def to_df(data):
+def dfto(data):
 	if data.isEmpty():
 		return
-	ss = SparkSession(data.context)
+	s = SparkSession(data.context)
 	data = data.collect()[0]
-	columns = [f"feature{i}" for i in range(len(data[0]))]
-	df = ss.createDataFrame(data, columns)
+	cols = [f"feature{j}" for j in range(len(data[0]))]
+	df = s.createDataFrame(data, cols)
 	drop_list = ['feature0','feature3','feature4','feature5','feature6','feature7','feature8']
 	train_df = df.select([column for column in df.columns if column not in drop_list])
 	train_df.show(5)
@@ -86,15 +86,15 @@ def to_df(data):
 	print("Naive Bayes Accuracy: ", nativeBayesAcc)
 	print("Random Forest Accuracy: ",RandomForestAcc)
 
-def map_data(data):
-	json_data=json.loads(data)
-	list_rec = list()
-	for rec in json_data:
-		to_tuple = tuple(json_data[rec].values())
-		list_rec .append(to_tuple)
-	return list_rec 	
+def mapdat(data):
+        lstrecord = list()
+	js_dat=json.loads(data)
+	for record in js_dat:
+		tup = tuple(js_dat[record].values())
+		lstrecord .append(tup)
+	return lstrecord 	
 
-lines = ssc.socketTextStream("localhost",6100).map(map_data).foreachRDD(to_df)
+lines = ssc.socketTextStream("localhost",6100).map(mapdat).foreachRDD(dfto)
 
 ssc.start() 
 #ssc.awaitTermination(100)
