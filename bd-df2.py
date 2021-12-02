@@ -87,12 +87,12 @@ def dfto(data):
 	print("Random Forest Accuracy: ",RandomForestAcc)
 
 def mapdat(data):
-        lstrecord = list()
-	js_dat=json.loads(data)
-	for record in js_dat:
-		tup = tuple(js_dat[record].values())
-		lstrecord .append(tup)
-	return lstrecord 	
+    lstrecord = list()
+    js_dat=json.loads(data)
+    for record in js_dat:
+        tup = tuple(js_dat[record].values())
+        lstrecord.append(tup)
+    return lstrecord 	
 
 lines = ssc.socketTextStream("localhost",6100).map(mapdat).foreachRDD(dfto)
 
