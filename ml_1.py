@@ -165,7 +165,7 @@ predictions.filter(predictions['prediction'] == 0) \
 
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 logregidfacc = evaluator.evaluate(predictions)
-
+'''
 pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])
 pipelineFit = pipeline.fit(train_df)
 dataset = pipelineFit.transform(train_df)
@@ -186,7 +186,7 @@ cvModel = cv.fit(trainingData)
 predictions = cvModel.transform(testData)
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 hyperlogregidfacc = evaluator.evaluate(predictions)
-'''
+
 
 
 #Naive Bayes
@@ -245,7 +245,7 @@ fone_rf = float(tp_rf) / (float(tp_rf) + 0.5*(fp_rf+fn_rf))
 
     
 #applied hyperparameter tuning on model
-'''
+
 pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])
 pipelineFit = pipeline.fit(train_df)
 dataset = pipelineFit.transform(train_df)
@@ -270,7 +270,7 @@ cvModel = cv.fit(trainingData)
 predictions = cvModel.transform(testData)
 evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 hyperlograndfor = evaluator.evaluate(predictions)
-'''   
+   
 
 
 #Metrics of all Machine Learning Models
