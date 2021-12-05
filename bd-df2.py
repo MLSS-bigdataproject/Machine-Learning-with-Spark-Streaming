@@ -377,12 +377,7 @@ def dfto(data):
 	print("F1-score = ",fone_rf)
 	
 	#adding the accuracy after each stream
-	acc = [hyperlogregidfacc,nativeBayesAcc,RandomForestAcc]
-	file = open('stream1.csv', 'a+', newline ='')
-	with file:
-	    write = csv.writer(file)
-	    write.writerows(acc)
-	file.close()
+        
 	
 	#plotting over the three models
 	fig = plt.figure(figsize = (10, 5))
@@ -394,16 +389,9 @@ def dfto(data):
 	plt.title("comparision of models")
 	plt.xticks(rotation=90)
 	plt.legend(["Logistic Regression","Naive Bayes" ,"Random Forest"], loc ="lower right")
-	plt.savefig("plots/comparisionbetweenmodels/compare1.jpg")
+	plt.savefig("compare.jpg")
 	
-	kmeans = KMeans().setK(39).setSeed(1)
-	model = kmeans.fit(trainingData)
-	predictions = model.transform(testData)
-	evaluator = ClusteringEvaluator()
-	silhouette = evaluator.evaluate(predictions)
-	print("Silhouette with squared euclidean distance = " + str(silhouette))
-	centers = model.clusterCenters()
-	predictions.show(n = 10, truncate = 30)
+
 
 def mapdat(data):
     lstrecord = list()
