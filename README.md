@@ -1,3 +1,2 @@
-# Machine-Learning-with-Spark-Streaming-Enron-Email-Spam-Detection
+# Machine-Learning-with-Spark-Streaming
 
-#note the jupyter notebook is just for us to get the basic method to solve the problem statement
