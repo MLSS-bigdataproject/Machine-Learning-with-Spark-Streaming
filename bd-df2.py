@@ -4,11 +4,11 @@ import os
 import sys, pyspark, json
 from pyspark import SparkContext
 import numpy as np
+import csv
 import matplotlib.pyplot as plt
 from pyspark.ml import Pipeline
 import pyspark.sql.types as tp
 from pyspark.ml.regression import RandomForestRegressor
-from pyspark.ml.clustering import KMeans
 from pyspark.ml.evaluation import RegressionEvaluator,MulticlassClassificationEvaluator,BinaryClassificationEvaluator,ClusteringEvaluator
 from pyspark.ml.feature import Tokenizer
 from pyspark.sql import SQLContext, SparkSession
@@ -22,11 +22,15 @@ from pyspark.sql.functions import col
 from pyspark.ml.feature import HashingTF, IDF
 from pyspark.ml.tuning import ParamGridBuilder, CrossValidator, TrainValidationSplit
 from pyspark.sql.functions import *
+from sklearn.cluster import MiniBatchKMeans
 from pyspark.ml.linalg import Vectors
 from sklearn.feature_selection import SelectKBest,chi2
 from pyspark.sql.types import FloatType
 from pyspark.mllib.evaluation import MulticlassMetrics
 import pyspark.sql.functions as F
+from pyspark.sql.types import IntegerType
+from pyspark.sql.functions import lit,monotonically_increasing_id, row_number
+from pyspark.sql import Window
 
 sc = SparkContext("local[2]", "Crime")
 #spark = SparkSession(sc)
@@ -60,7 +64,7 @@ def dfto(data):
 	test = SelectKBest(score_func=chi2, k=2)
 	fit = test.fit(x, y)
 	print(fit.scores_)
-	#x and y columns are somewhat usefull with x giving 45% usability and y giving less than 10%
+	#x and y columns are useful with x giving 45% usability and y giving less than 10%
 	
 	
 	#doing for categorical data
@@ -100,8 +104,8 @@ def dfto(data):
 	dataset = pipelineFit.transform(train_df)
 	dataset.show(5)
 	(trainingData, testData) = dataset.randomSplit([0.7, 0.3], seed = 100)
-	print("Training Dataset Count: " + str(trainingData.count()))
-	print("Test Dataset Count: " + str(testData.count()))
+	print("Training Data count: " + str(trainingData.count()))
+	print("Validation Dataset count: " + str(testData.count()))
 	
 	
 	#Logistic Regression
@@ -112,6 +116,7 @@ def dfto(data):
 	predictions.filter(predictions['prediction'] == 0).select("Descript","Category","probability","label","prediction").orderBy("probability", ascending=False).show(n = 10, truncate = 30)
 	evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 	LogRegAcc = evaluator.evaluate(predictions)
+	lrModel.write().overwrite().save("models/lr")
 	
 	#data visualization
 	#check ideal iterations and ploting graph
@@ -188,8 +193,8 @@ def dfto(data):
 
 	paramGrid = (ParamGridBuilder()
              .addGrid(lr.regParam, [0.1, 0.3, 0.5]) # regularization parameter
-             .addGrid(lr.elasticNetParam, [0.0, 0.1, 0.2]) # Elastic Net Parameter (Ridge = 0)
-#            .addGrid(model.maxIter, [10, 20, 50]) #Number of iterations
+#          .addGrid(lr.elasticNetParam, [0.0, 0.1, 0.2]) # Elastic Net Param###eter (Ridge = 0)
+            .addGrid(model.maxIter, [10, 20, 50]) #Number of iterations
 #            .addGrid(idf.numFeatures, [10, 100, 1000]) # Number of features
              .build())
 	cv = CrossValidator(estimator=lr, \
@@ -217,7 +222,7 @@ def dfto(data):
 
 	evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 	nativeBayesAcc = evaluator.evaluate(predictions)
-	
+	model.write().overwrite().save("models/nb")
 	
 	
 	#data visualization
@@ -247,7 +252,7 @@ def dfto(data):
 	plt.bar(temp, count,width = 0.4)
 	plt.xlabel("predictions")
 	plt.ylabel("count")
-	plt.title("distribution of prediction lables")
+	plt.title("distribution of prediction labels")
 	plt.savefig("plots/NaiveBayes/predictionvsactual/pred1.jpg")
 	
 
@@ -279,6 +284,7 @@ def dfto(data):
 	evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 	#Accuracy
 	RandomForestAcc = evaluator.evaluate(predictions)
+	rfModel.write().overwrite().save("models/rbf")
 
 
 
@@ -340,8 +346,8 @@ def dfto(data):
                             maxBins = 32)
 
 	paramGrid = (ParamGridBuilder()
-             .addGrid(rbf.numTrees, [10,100,1000]) # regularization parameter
-             .addGrid(rbf.maxDepth, [1 ,4, 10]) # Elastic Net Parameter (Ridge = 0)
+             .addGrid(rbf.numTrees, [10,100,1000]) # trees
+             .addGrid(rbf.maxDepth, [1 ,4, 10]) # depth 
 #            .addGrid(model.maxIter, [10, 20, 50]) #Number of iterations
 #            .addGrid(idf.numFeatures, [10, 100, 1000]) # Number of features
              .build())
@@ -377,7 +383,14 @@ def dfto(data):
 	print("F1-score = ",fone_rf)
 	
 	#adding the accuracy after each stream
-        
+	'''
+	acc = [hyperlogregidfacc,nativeBayesAcc,RandomForestAcc]
+	file = open('stream1.csv', 'a+', newline ='')
+	with file:
+	    write = csv.writer(file)
+	    write.writerows(acc)
+	file.close()
+	'''
 	
 	#plotting over the three models
 	fig = plt.figure(figsize = (10, 5))
@@ -389,8 +402,108 @@ def dfto(data):
 	plt.title("comparision of models")
 	plt.xticks(rotation=90)
 	plt.legend(["Logistic Regression","Naive Bayes" ,"Random Forest"], loc ="lower right")
-	plt.savefig("compare.jpg")
+	plt.savefig("plots/comparisionbetweenmodels/compare1.jpg")
 	
+	#kmeanclustering
+	drop_list = ['Dates','DayOfWeek','PdDistrict','Resolution','Address',"Descript","Category"]
+	train_df = df.select([column for column in df.columns if column not in drop_list])
+	data = train_df.select(col("X"),col("Y")).collect()
+	kmeans = MiniBatchKMeans(n_clusters=39, random_state=0, batch_size=6)
+	predictions = kmeans.fit_predict(data).tolist()
+	b = sql_context.createDataFrame([(l,) for l in predictions], ['Cluster'])
+	train_df = train_df.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+	b = b.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+	final_df = train_df.join(b, train_df.row_idx == b.row_idx).drop("row_idx")
+	df2 = final_df.withColumn('Cluster',final_df['Cluster'].cast(IntegerType()))
+	df2.show()
+	ctr = df2.select("Cluster").groupBy("Cluster").count().rdd.flatMap(lambda x: x).collect()
+	ctr = [ctr[i] for i in range(len(ctr)) if i % 2 != 0]
+	t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
+	
+	clusarr = []
+	ct = []
+
+	#varying number of clusters
+	for i in range(10,40,10):
+    	    data = train_df.select(col("X"),col("Y")).collect()
+    	    kmeans = MiniBatchKMeans(n_clusters=i, random_state=0, batch_size=6)
+    	    predictions = kmeans.fit_predict(data).tolist()
+    	    b = sql_context.createDataFrame([(l,) for l in predictions], ['Cluster'])
+    	    train_df = train_df.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+    	    b = b.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+    	    final_df = train_df.join(b, train_df.row_idx == b.row_idx).drop("row_idx")
+    	    df2 = final_df.withColumn('Cluster',final_df['Cluster'].cast(IntegerType()))
+    	    ctr = df2.select("Cluster").groupBy("Cluster").count().rdd.flatMap(lambda x: x).collect()
+    	    ctr = [ctr[i] for i in range(len(ctr)) if i % 2 != 0]
+    	    ct.append(ctr)
+    	    t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
+    	    clusarr.append(t)
+  
+	#data visualization  
+	for i in range(len(clusarr)):
+    	    fig = plt.figure(figsize = (10, 5))
+    	    plt.bar(clusarr[i], ct[i],width = 0.4)
+    	    plt.xlabel("clusters")
+    	    plt.ylabel("count")
+    	    plt.title("distribution of clusters")
+    	    plt.savefig("plots/kmeans/variationofclusters/test"+ str(i)+ ".jpg")
+
+	clusarr1 = []
+	ct1 = []
+
+	#varying number of batch
+	for i in range(1,6):
+	    data = train_df.select(col("X"),col("Y")).collect()
+	    kmeans = MiniBatchKMeans(n_clusters=39, random_state=0, batch_size=i)
+	    predictions = kmeans.fit_predict(data).tolist()
+	    b = sql_context.createDataFrame([(l,) for l in predictions], ['Cluster'])
+	    train_df = train_df.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+	    b = b.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+	    final_df = train_df.join(b, train_df.row_idx == b.row_idx).drop("row_idx")
+	    df2 = final_df.withColumn('Cluster',final_df['Cluster'].cast(IntegerType()))
+	    ctr = df2.select("Cluster").groupBy("Cluster").count().rdd.flatMap(lambda x: x).collect()
+	    ctr = [ctr[i] for i in range(len(ctr)) if i % 2 != 0]
+	    ct1.append(ctr)
+	    t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
+	    clusarr1.append(t)
+    	    
+	#data visualization
+	for i in range(len(clusarr1)):
+    	    fig = plt.figure(figsize = (10, 5))
+    	    plt.bar(clusarr1[i], ct1[i],width = 0.4)
+    	    plt.xlabel("clusters")
+    	    plt.ylabel("count")
+    	    plt.title("variation of batch size")
+    	    plt.savefig("plots/kmeans/variationofbatch/test"+ str(i)+ ".jpg")
+
+
+	clusarr2 = []
+	ct2= []
+	
+	#varying number of random states
+	for i in range(5):
+    	    data = train_df.select(col("X"),col("Y")).collect()
+    	    kmeans = MiniBatchKMeans(n_clusters=39, random_state=i, batch_size=6)
+    	    predictions = kmeans.fit_predict(data).tolist()
+    	    b = sql_context.createDataFrame([(l,) for l in predictions], ['Cluster'])
+    	    train_df = train_df.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+    	    b = b.withColumn("row_idx", row_number().over(Window.orderBy(monotonically_increasing_id())))
+    	    final_df = train_df.join(b, train_df.row_idx == b.row_idx).drop("row_idx")
+    	    df2 = final_df.withColumn('Cluster',final_df['Cluster'].cast(IntegerType()))
+    	    ctr = df2.select("Cluster").groupBy("Cluster").count().rdd.flatMap(lambda x: x).collect()
+    	    ctr = [ctr[i] for i in range(len(ctr)) if i % 2 != 0]
+    	    ct2.append(ctr)
+    	    t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
+    	    clusarr2.append(t)
+    	    
+	#data visualization
+	for i in range(len(clusarr2)):
+	    fig = plt.figure(figsize = (10, 5))
+	    plt.bar(clusarr2[i], ct2[i],width = 0.4)
+	    plt.xlabel("clusters")
+	    plt.ylabel("count")
+	    plt.title("variation of random state")
+	    plt.savefig("plots/kmeans/variationofrandomstate/test"+ str(i)+ ".jpg")
 
 
 def mapdat(data):
