@@ -32,16 +32,19 @@ from pyspark.sql.types import IntegerType
 from pyspark.sql.functions import lit,monotonically_increasing_id, row_number
 from pyspark.sql import Window
 
+
 sc = SparkContext("local[2]", "Crime")
 #spark = SparkSession(sc)
 ssc = StreamingContext(sc, 1)
 sql_context=SQLContext(sc)
+
 
 def dfto(data):
 	if data.isEmpty():
 		return
 	s = SparkSession(data.context)
 	data = data.collect()[0]
+	#converting data into dataframe for easy usage
 	cols = [f"feature{j}" for j in range(len(data[0]))]
 	colm = ['Dates','Category','Descript', 'DayOfWeek', 'PdDistrict', 'Resolution', 'Address','X', 'Y']
 	df = s.createDataFrame(data, colm)
@@ -52,7 +55,9 @@ def dfto(data):
 	df = df.withColumn('Y', df['Y'].cast(FloatType()))
 
 
+
 	#done for float columns
+	#scaling of values
 	features = ['X', 'Y']
 	x = df.select([column for column in df.columns if column in features]).collect()
 	scaler = MinMaxScaler()
@@ -60,11 +65,13 @@ def dfto(data):
 	x = scaler.transform(x)
 	y = df.select(["Category"]).collect()
 	label_stringIdx = StringIndexer(inputCol = "Category", outputCol = "label")
+	#feature selection
 	indexed = label_stringIdx.fit(df).transform(df)
 	test = SelectKBest(score_func=chi2, k=2)
 	fit = test.fit(x, y)
 	print(fit.scores_)
 	#x and y columns are useful with x giving 45% usability and y giving less than 10%
+	
 	
 	
 	#doing for categorical data
@@ -83,6 +90,7 @@ def dfto(data):
 	fit = test.fit(x, y)
 	print(fit.scores_)
 	#even though the values are high these columns will be dropped because during streaming and upon using these features,accuracy becomes bad
+	
 	
 	
 	#removing all unnecessary columns
@@ -104,8 +112,11 @@ def dfto(data):
 	dataset = pipelineFit.transform(train_df)
 	dataset.show(5)
 	(trainingData, testData) = dataset.randomSplit([0.7, 0.3], seed = 100)
-	print("Training Data count: " + str(trainingData.count()))
-	print("Validation Dataset count: " + str(testData.count()))
+	
+	#print("Training Data count: " + str(trainingData.count()))
+	#print("Validation Dataset count: " + str(testData.count()))
+	
+	
 	
 	
 	#Logistic Regression
@@ -117,6 +128,7 @@ def dfto(data):
 	evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 	LogRegAcc = evaluator.evaluate(predictions)
 	lrModel.write().overwrite().save("models/lr")
+	
 	
 	#data visualization
 	#check ideal iterations and ploting graph
@@ -135,6 +147,8 @@ def dfto(data):
 	plt.title("iterations vs accuracy")
 	plt.xticks(rotation=90)
 	plt.savefig("plots/LogisticRegression/Itervsacc/iteracc1.jpg")
+	
+	
 
 	#checking ideal reg parameters and ploting graph
 	regparamacc = []
@@ -164,6 +178,8 @@ def dfto(data):
 	fone_lr = float(tp_lr) / (float(tp_lr) + 0.5*(fp_lr+fn_lr))
 	
 	
+	
+	
 	#Implemented lr with tf-idf and also applied hyperparameter tuning
 	print("logistic regression with tf-idf:")
 	hashingTF = HashingTF(inputCol="filtered", outputCol="rawFeatures", numFeatures=10000)
@@ -184,6 +200,7 @@ def dfto(data):
 	
 	
 	
+	
 	#hyperparameter tuning	
 	pipeline = Pipeline(stages=[regexTokenizer, stopwordsRemover, countVectors, label_stringIdx])
 	pipelineFit = pipeline.fit(train_df)
@@ -194,7 +211,7 @@ def dfto(data):
 	paramGrid = (ParamGridBuilder()
              .addGrid(lr.regParam, [0.1, 0.3, 0.5]) # regularization parameter
 #          .addGrid(lr.elasticNetParam, [0.0, 0.1, 0.2]) # Elastic Net Param###eter (Ridge = 0)
-            .addGrid(model.maxIter, [10, 20, 50]) #Number of iterations
+            .addGrid(lr.maxIter, [10, 20, 50]) #Number of iterations
 #            .addGrid(idf.numFeatures, [10, 100, 1000]) # Number of features
              .build())
 	cv = CrossValidator(estimator=lr, \
@@ -205,6 +222,8 @@ def dfto(data):
 	predictions = cvModel.transform(testData)
 	evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 	hyperlogregidfacc = evaluator.evaluate(predictions)
+	
+	
 	
 	
 	
@@ -243,6 +262,7 @@ def dfto(data):
 	plt.xticks(rotation=90)
 	plt.savefig("plots/NaiveBayes/smoothingvsacc/smooth1.jpg")
 
+
 	#plotting distribution of predictions
 	count = predictions.select("prediction").groupBy("prediction").count().rdd.flatMap(lambda x: x).collect()
 	count = [count[i] for i in range(len(count)) if i % 2 != 0]
@@ -255,6 +275,7 @@ def dfto(data):
 	plt.title("distribution of prediction labels")
 	plt.savefig("plots/NaiveBayes/predictionvsactual/pred1.jpg")
 	
+	
 
 	#Implemented calculations for Precision,Recall and F1-Score for Naive Bayes
 	tp_nb = predictions[(predictions.label == 1) & (predictions.prediction == 1)].count()
@@ -264,6 +285,8 @@ def dfto(data):
 	r_nb = float(tp_nb)/(tp_nb + fn_nb)
 	p_nb = float(tp_nb) / (tp_nb + fp_nb)
 	fone_nb = float(tp_nb) / (float(tp_nb) + 0.5*(fp_nb+fn_nb))
+	
+	
 	
 	
 
@@ -305,6 +328,7 @@ def dfto(data):
 	plt.title("depth vs accuracy")
 	plt.xticks(rotation=90)
 	plt.savefig("plots/RandomForest/depthvsacc/depth1.jpg")
+	
 	
 	#variation of accuracy with changing no of trees:
 	forestacc = []
@@ -348,7 +372,6 @@ def dfto(data):
 	paramGrid = (ParamGridBuilder()
              .addGrid(rbf.numTrees, [10,100,1000]) # trees
              .addGrid(rbf.maxDepth, [1 ,4, 10]) # depth 
-#            .addGrid(model.maxIter, [10, 20, 50]) #Number of iterations
 #            .addGrid(idf.numFeatures, [10, 100, 1000]) # Number of features
              .build())
 	cv = CrossValidator(estimator=rbf, \
@@ -360,6 +383,9 @@ def dfto(data):
 	evaluator = MulticlassClassificationEvaluator(predictionCol="prediction")
 	hyperlograndfor = evaluator.evaluate(predictions)
 	
+
+
+
 
 	#Metrics of all Machine Learning Models
 	print("Logistic Regression Metrics:")
@@ -382,6 +408,7 @@ def dfto(data):
 	print("precision = ", p_rf)
 	print("F1-score = ",fone_rf)
 	
+	
 	#adding the accuracy after each stream
 	'''
 	acc = [hyperlogregidfacc,nativeBayesAcc,RandomForestAcc]
@@ -391,6 +418,7 @@ def dfto(data):
 	    write.writerows(acc)
 	file.close()
 	'''
+	
 	
 	#plotting over the three models
 	fig = plt.figure(figsize = (10, 5))
@@ -403,6 +431,8 @@ def dfto(data):
 	plt.xticks(rotation=90)
 	plt.legend(["Logistic Regression","Naive Bayes" ,"Random Forest"], loc ="lower right")
 	plt.savefig("plots/comparisionbetweenmodels/compare1.jpg")
+	
+	
 	
 	#kmeanclustering
 	drop_list = ['Dates','DayOfWeek','PdDistrict','Resolution','Address',"Descript","Category"]
@@ -420,8 +450,12 @@ def dfto(data):
 	ctr = [ctr[i] for i in range(len(ctr)) if i % 2 != 0]
 	t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
 	
+	
+	
 	clusarr = []
 	ct = []
+	
+	
 
 	#varying number of clusters
 	for i in range(10,40,10):
@@ -439,6 +473,7 @@ def dfto(data):
     	    t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
     	    clusarr.append(t)
   
+  
 	#data visualization  
 	for i in range(len(clusarr)):
     	    fig = plt.figure(figsize = (10, 5))
@@ -448,8 +483,10 @@ def dfto(data):
     	    plt.title("distribution of clusters")
     	    plt.savefig("plots/kmeans/variationofclusters/test"+ str(i)+ ".jpg")
 
+
 	clusarr1 = []
 	ct1 = []
+
 
 	#varying number of batch
 	for i in range(1,6):
@@ -467,6 +504,7 @@ def dfto(data):
 	    t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
 	    clusarr1.append(t)
     	    
+    	    
 	#data visualization
 	for i in range(len(clusarr1)):
     	    fig = plt.figure(figsize = (10, 5))
@@ -477,8 +515,10 @@ def dfto(data):
     	    plt.savefig("plots/kmeans/variationofbatch/test"+ str(i)+ ".jpg")
 
 
+
 	clusarr2 = []
 	ct2= []
+	
 	
 	#varying number of random states
 	for i in range(5):
@@ -495,6 +535,7 @@ def dfto(data):
     	    ct2.append(ctr)
     	    t = df2.select("Cluster").distinct().rdd.flatMap(lambda x: x).collect()
     	    clusarr2.append(t)
+    	    
     	    
 	#data visualization
 	for i in range(len(clusarr2)):
