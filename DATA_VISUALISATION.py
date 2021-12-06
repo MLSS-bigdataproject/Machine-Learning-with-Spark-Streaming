@@ -22,6 +22,7 @@ print(data.describe())
 
 # different categories of crime
 
+fig = plt.figure(figsize = (10, 5))
 plt.rcParams['figure.figsize'] = (30,150)
 plt.style.use('dark_background')
 
@@ -29,10 +30,10 @@ sns.countplot(data['Category'], palette = 'gnuplot')
 
 plt.title('Major crimes', fontweight = 30, fontsize = 20)
 plt.xticks(rotation = 90)
-plt.show()
-
+plt.savefig("majorcrimes.jpg")
 
 #plotting a tree map
+fig = plt.figure(figsize = (10, 5))
 y = data['Category'].value_counts().head(25)
     
 plt.rcParams['figure.figsize'] = (15, 15)
@@ -43,11 +44,11 @@ squarify.plot(sizes = y.values, label = y.index, alpha=.8, color = color)
 plt.title('Tree Map for Top 25 Crimes', fontsize = 20)
 
 plt.axis('off')
-plt.show()
+plt.savefig("treemap.jpg")
 
 
 # Regions with count of crimes graph
-
+fig = plt.figure(figsize = (10, 5))
 plt.rcParams['figure.figsize'] = (20, 9)
 plt.style.use('seaborn')
 
@@ -57,10 +58,11 @@ data['Address'].value_counts().head(15).plot.bar(color = color, figsize = (10,20
 plt.title('Top 15 Regions in Crime',fontsize = 20)
 
 plt.xticks(rotation = 90)
-plt.show()
+plt.savefig("countofcrimes.jpg")
 
 
 # Regions with count of crimes piechart
+fig = plt.figure(figsize = (10, 5))
 plt.style.use('seaborn')
 
 data['DayOfWeek'].value_counts().head(15).plot.pie(figsize = (15, 8), explode = (0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1))
@@ -68,12 +70,12 @@ data['DayOfWeek'].value_counts().head(15).plot.pie(figsize = (15, 8), explode = 
 plt.title('Crime count on each day',fontsize = 20)
 
 plt.xticks(rotation = 90)
-plt.show()
+plt.savefig("piechart.jpg")
 
 
 
 # Resolutions for crimes
-
+fig = plt.figure(figsize = (10, 5))
 plt.style.use('seaborn')
 
 color = plt.cm.winter(np.linspace(0, 10, 20))
@@ -81,11 +83,12 @@ data['Resolution'].value_counts().plot.bar(color = color, figsize = (15, 8))
 
 plt.title('Resolutions for Crime',fontsize = 20)
 plt.xticks(rotation = 90)
-plt.show()
+plt.savefig("Resolutions.jpg")
 
 
 
 #crimes in each months
+fig = plt.figure(figsize = (10, 5))
 data['Dates'] = pd.to_datetime(data['Dates'])
 
 data['Month'] = data['Dates'].dt.month
@@ -95,8 +98,7 @@ plt.rcParams['figure.figsize'] = (15, 8)
 
 sns.countplot(data['Month'], palette = 'autumn',)
 plt.title('Crimes in each Months', fontsize = 20)
-
-plt.show()
+plt.savefig("crimesineachmonths.jpg")
 
 
 # checking the time at which crime occurs mostly
@@ -109,6 +111,7 @@ plt.show()
 
 
 #district vs category of crime
+fig = plt.figure(figsize = (10, 5))
 df = pd.crosstab(data['Category'], data['PdDistrict'])
 color = plt.cm.Greys(np.linspace(0, 1, 10))
 
@@ -116,7 +119,7 @@ df.div(df.sum(1).astype(float), axis = 0).plot.bar(stacked = True, color = color
 plt.title('District vs Category of Crime', fontweight = 30, fontsize = 20)
 
 plt.xticks(rotation = 90)
-plt.show()
+plt.savefig("districtvscategoryofcrime.jpg")
 
 
 
